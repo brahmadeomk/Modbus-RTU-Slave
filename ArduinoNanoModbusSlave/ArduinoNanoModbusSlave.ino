@@ -32,9 +32,10 @@
 
   Holding registers (read/write, RAM-backed test values, no physical pins)
 
-  Modbus serial settings: 9600 baud, 8 data bits, no parity, 2 stop bits.
-  (The spec requires 2 stop bits when no parity is used, so the line stays
-  RTU compliant.) Change SLAVE_ID/BAUD_RATE below to match your master.
+  Comm parameters (slave ID, baud rate, parity/stop bits) are set in the
+  "USER CONFIGURATION" block below - edit those to match your master.
+  The spec requires 2 stop bits when no parity is used, which is why
+  SERIAL_8N2 is the default instead of SERIAL_8N1.
 
   Modbus data model addressing used by this slave (0-based, as sent on the
   wire). Add the conventional offset if your master/HMI uses the classic
@@ -47,8 +48,20 @@
 
 #include <ModbusRTUSlave.h>
 
+// ==================== USER CONFIGURATION ====================
+// Modbus slave address. Must be unique on the RS-485 bus (1-247).
 const uint8_t SLAVE_ID = 1;
+
+// Serial baud rate. Must match the Modbus master.
 const unsigned long BAUD_RATE = 9600;
+
+// Serial frame format. Must match the Modbus master. Options:
+//   SERIAL_8N1, SERIAL_8N2 (8 data bits, no parity, 1 or 2 stop bits)
+//   SERIAL_8E1, SERIAL_8E2 (even parity)
+//   SERIAL_8O1, SERIAL_8O2 (odd parity)
+// Per the Modbus spec, use 2 stop bits when parity is set to none.
+const uint16_t SERIAL_CONFIG = SERIAL_8N2;
+// ==============================================================
 
 const uint8_t DE_RE_PIN = 2;
 
@@ -86,8 +99,8 @@ void setup() {
   modbus.configureHoldingRegisters(holdingRegisters, NUM_HOLDING_REGISTERS);
   modbus.configureInputRegisters(inputRegisters, NUM_INPUT_REGISTERS);
 
-  Serial.begin(BAUD_RATE, SERIAL_8N2);
-  modbus.begin(SLAVE_ID, BAUD_RATE, SERIAL_8N2);
+  Serial.begin(BAUD_RATE, SERIAL_CONFIG);
+  modbus.begin(SLAVE_ID, BAUD_RATE, SERIAL_CONFIG);
 }
 
 void loop() {

@@ -37,9 +37,17 @@ since the hardware UART is shared.
 
 ## Serial settings
 
-9600 baud, 8 data bits, no parity, 2 stop bits (8N2). Two stop bits are
-used because the spec requires them when parity is disabled. Edit
-`SLAVE_ID` / `BAUD_RATE` in the sketch to match your master.
+Default: 9600 baud, 8N2 (no parity, 2 stop bits — required by the spec
+when parity is disabled). All comm parameters are set in the
+`USER CONFIGURATION` block at the top of the sketch:
+
+```cpp
+const uint8_t SLAVE_ID = 1;
+const unsigned long BAUD_RATE = 9600;
+const uint16_t SERIAL_CONFIG = SERIAL_8N2;  // or SERIAL_8N1/8E1/8E2/8O1/8O2
+```
+
+Edit these to match your master, reflash, and you're done.
 
 ## Register map (0-based, as sent on the wire)
 
