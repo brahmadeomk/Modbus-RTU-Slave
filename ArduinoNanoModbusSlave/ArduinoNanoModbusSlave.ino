@@ -13,7 +13,7 @@
   Wiring (Arduino Nano <-> MAX485 module):
     Nano D0 (RX) <- MAX485 RO
     Nano D1 (TX) -> MAX485 DI
-    Nano D2      -> MAX485 DE + RE (tied together)
+    Nano D3      -> MAX485 DE + RE (tied together)
     Nano 5V      -> MAX485 VCC
     Nano GND     -> MAX485 GND
     MAX485 A/B   -> RS-485 bus (twisted pair, 120 ohm termination at each bus end)
@@ -22,10 +22,10 @@
   MAX485 TX/RX lines while uploading sketches over USB.
 
   Digital inputs (dry contacts / sensors), pulled up internally, active LOW:
-    D3, D4, D5, D6
+    D4, D5, D6, D7
 
   Digital outputs (relays / LEDs / actuators):
-    D7, D8, D9, D10
+    D8, D9, D10, D11
 
   Input registers (read-only, 0-1023 raw ADC counts):
     A0, A1, A2, A3
@@ -63,15 +63,15 @@ const unsigned long BAUD_RATE = 9600;
 const uint16_t SERIAL_CONFIG = SERIAL_8N2;
 // ==============================================================
 
-const uint8_t DE_RE_PIN = 2;
+const uint8_t DE_RE_PIN = 3;
 
 const uint8_t NUM_DIGITAL_INPUTS = 4;
 const uint8_t NUM_DIGITAL_OUTPUTS = 4;
 const uint8_t NUM_HOLDING_REGISTERS = 4;
 const uint8_t NUM_INPUT_REGISTERS = 4;
 
-const uint8_t digitalInputPins[NUM_DIGITAL_INPUTS] = {3, 4, 5, 6};
-const uint8_t digitalOutputPins[NUM_DIGITAL_OUTPUTS] = {7, 8, 9, 10};
+const uint8_t digitalInputPins[NUM_DIGITAL_INPUTS] = {4, 5, 6, 7};
+const uint8_t digitalOutputPins[NUM_DIGITAL_OUTPUTS] = {8, 9, 10, 11};
 const uint8_t analogInputPins[NUM_INPUT_REGISTERS] = {A0, A1, A2, A3};
 
 bool discreteInputs[NUM_DIGITAL_INPUTS];

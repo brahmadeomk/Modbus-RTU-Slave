@@ -20,7 +20,7 @@ CRC16, RTU framing/timing, and Modbus exception responses.
 |---|---|
 | D0 (RX) | RO |
 | D1 (TX) | DI |
-| D2 | DE + RE (tied together) |
+| D3 | DE + RE (tied together) |
 | 5V | VCC |
 | GND | GND |
 
@@ -30,8 +30,8 @@ since the hardware UART is shared.
 
 | Signal | Nano pins |
 |---|---|
-| Digital inputs (active LOW, internal pull-up) | D3, D4, D5, D6 |
-| Digital outputs | D7, D8, D9, D10 |
+| Digital inputs (active LOW, internal pull-up) | D4, D5, D6, D7 |
+| Digital outputs | D8, D9, D10, D11 |
 | Input registers (raw 10-bit ADC, 0-1023) | A0, A1, A2, A3 |
 | Holding registers | RAM-backed, no physical pins |
 
