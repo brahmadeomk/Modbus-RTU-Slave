@@ -172,6 +172,10 @@ roundState.OnClientEvent:Connect(function(data)
 			banner.Text = string.upper(tostring(data.winner)) .. " WINS"
 			banner.TextColor3 = data.winner == "Red" and RED or BLUE
 		end
+	elseif data.state == "intermission" then
+		banner.Visible = true
+		banner.Text = string.format("MATCH STARTS IN %d", data.timeLeft or 0)
+		banner.TextColor3 = WHITE
 	else
 		banner.Visible = false
 	end

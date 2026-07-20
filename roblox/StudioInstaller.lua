@@ -216,22 +216,27 @@ Players.PlayerRemoving:Connect(resetPlayer)
 		name = "GameManager",
 		class = "Script",
 		source = [=[
--- Teams, kill credit, heal-on-kill, killfeed, and the round loop
--- (team deathmatch: first team to the kill target, or highest when time runs out).
+-- Match flow: everyone waits in the lobby during intermission, gets
+-- teleported to their team's arena pads (and armed) when the match starts,
+-- respawns back into the arena mid-match, and returns to the lobby when the
+-- match ends. Also owns teams, kill credit, heal-on-kill, and the killfeed.
 local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local shared = ReplicatedStorage:WaitForChild("RivalsShared")
 local Remotes = require(shared:WaitForChild("Remotes"))
+local Loadout = require(script.Parent:WaitForChild("Loadout"))
 
 local killFeed = Remotes.get("KillFeed")
 local roundState = Remotes.get("RoundState")
 
+local INTERMISSION_TIME = 15
 local ROUND_TIME = 300
 local KILL_TARGET = 40
 local KILL_HEAL = 35
 local KILL_CREDIT_WINDOW = 6 -- seconds after last damage that a death still counts
+local SPAWN_PROTECTION = 3
 
 local function ensureTeam(name, brickColor)
 	local team = Teams:FindFirstChild(name)
@@ -248,20 +253,60 @@ ensureTeam("Red", BrickColor.new("Bright red"))
 ensureTeam("Blue", BrickColor.new("Bright blue"))
 
 local scores = { Red = 0, Blue = 0 }
-local roundEndsAt = 0
-local roundOver = false
+local phaseEndsAt = 0
+local matchActive = false
 
 local function broadcast(stateName, winner)
 	roundState:FireAllClients({
 		red = scores.Red,
 		blue = scores.Blue,
-		timeLeft = math.max(0, math.floor(roundEndsAt - os.clock())),
+		timeLeft = math.max(0, math.floor(phaseEndsAt - os.clock())),
 		state = stateName,
 		winner = winner,
 		target = KILL_TARGET,
 	})
 end
 
+-- Arena placement ---------------------------------------------------------
+local function pickSpawnPad(teamName)
+	local mapFolder = workspace:FindFirstChild("RivalsMap")
+	local folder = mapFolder
+		and mapFolder:FindFirstChild(teamName == "Blue" and "BlueSpawns" or "RedSpawns")
+	local pads = folder and folder:GetChildren()
+	if pads and #pads > 0 then
+		return pads[math.random(#pads)]
+	end
+	return nil
+end
+
+local function sendToArena(player)
+	local character = player.Character
+	if not character then
+		return
+	end
+	local root = character:WaitForChild("HumanoidRootPart", 5)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not (root and humanoid and humanoid.Health > 0) then
+		return
+	end
+	local pad = pickSpawnPad(player.Team and player.Team.Name or "Red")
+	if pad then
+		local pos = pad.Position + Vector3.new(0, 4, 0)
+		character:PivotTo(CFrame.lookAt(pos, Vector3.new(0, pos.Y, 0)))
+	end
+	humanoid.Health = humanoid.MaxHealth
+	Loadout.give(player)
+
+	local ff = Instance.new("ForceField")
+	ff.Parent = character
+	task.delay(SPAWN_PROTECTION, function()
+		if ff.Parent then
+			ff:Destroy()
+		end
+	end)
+end
+
+-- Kill credit -------------------------------------------------------------
 local function bumpStat(player, statName)
 	local stats = player:FindFirstChild("leaderstats")
 	local stat = stats and stats:FindFirstChild(statName)
@@ -286,7 +331,7 @@ local function onDied(player, humanoid)
 	if killer and killer ~= player then
 		bumpStat(killer, "Kills")
 		local teamName = killer.Team and killer.Team.Name
-		if not roundOver and teamName and scores[teamName] then
+		if matchActive and teamName and scores[teamName] then
 			scores[teamName] += 1
 		end
 		-- Rivals-style: kills top you back up
@@ -306,34 +351,138 @@ Players.PlayerAdded:Connect(function(player)
 		humanoid.Died:Once(function()
 			onDied(player, humanoid)
 		end)
+		-- Mid-match spawns (joiners and respawns) go straight into the arena
+		if matchActive then
+			task.defer(sendToArena, player)
+		end
 	end)
 end)
 
+-- Match loop ---------------------------------------------------------------
 task.spawn(function()
 	while true do
+		-- Intermission: everyone hangs out in the lobby, unarmed
+		matchActive = false
+		phaseEndsAt = os.clock() + INTERMISSION_TIME
+		while os.clock() < phaseEndsAt do
+			broadcast("intermission")
+			task.wait(1)
+		end
+
+		-- Match start: reset scores, drop everyone onto their team pads
 		scores.Red, scores.Blue = 0, 0
-		roundOver = false
-		roundEndsAt = os.clock() + ROUND_TIME
-		while os.clock() < roundEndsAt and scores.Red < KILL_TARGET and scores.Blue < KILL_TARGET do
+		matchActive = true
+		phaseEndsAt = os.clock() + ROUND_TIME
+		for _, player in Players:GetPlayers() do
+			sendToArena(player)
+		end
+		while os.clock() < phaseEndsAt and scores.Red < KILL_TARGET and scores.Blue < KILL_TARGET do
 			broadcast("playing")
 			task.wait(1)
 		end
-		roundOver = true
+
+		-- Match over: announce, then send everyone back to the lobby
+		matchActive = false
 		local winner
 		if scores.Red == scores.Blue then
 			winner = "Draw"
 		else
 			winner = scores.Red > scores.Blue and "Red" or "Blue"
 		end
+		phaseEndsAt = os.clock() + 8
 		for _ = 1, 8 do
 			broadcast("over", winner)
 			task.wait(1)
 		end
 		for _, player in Players:GetPlayers() do
+			Loadout.clear(player)
 			player:LoadCharacter()
 		end
 	end
 end)
+]=],
+	},
+	{
+		parent = { "ServerScriptService", "RivalsShooter" },
+		name = "Loadout",
+		class = "ModuleScript",
+		source = [=[
+-- Builds weapon Tools and hands them out / takes them away.
+-- Players only hold weapons while a match is running.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local shared = ReplicatedStorage:WaitForChild("RivalsShared")
+local WeaponConfig = require(shared:WaitForChild("WeaponConfig"))
+
+local Loadout = {}
+
+local sortedWeapons = {}
+for key, cfg in WeaponConfig do
+	table.insert(sortedWeapons, { key = key, cfg = cfg })
+end
+table.sort(sortedWeapons, function(a, b)
+	return a.cfg.slot < b.cfg.slot
+end)
+
+local function buildTool(key, cfg)
+	local tool = Instance.new("Tool")
+	tool.Name = cfg.displayName
+	tool.CanBeDropped = false
+	tool.ToolTip = cfg.displayName
+	tool:SetAttribute("WeaponName", key)
+	tool:SetAttribute("Ammo", cfg.magSize)
+	tool:SetAttribute("Reloading", false)
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.5, 0.5, 2.2)
+	handle.Color = Color3.fromRGB(40, 40, 45)
+	handle.Material = Enum.Material.Metal
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+
+	return tool
+end
+
+local function clearContainer(container)
+	if not container then
+		return
+	end
+	for _, child in container:GetChildren() do
+		if child:IsA("Tool") and child:GetAttribute("WeaponName") then
+			child:Destroy()
+		end
+	end
+end
+
+function Loadout.clear(player)
+	clearContainer(player:FindFirstChild("Backpack"))
+	clearContainer(player.Character)
+end
+
+function Loadout.give(player)
+	Loadout.clear(player)
+	local backpack = player:FindFirstChild("Backpack")
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not (backpack and humanoid and humanoid.Health > 0) then
+		return
+	end
+	local firstTool
+	for _, entry in sortedWeapons do
+		local tool = buildTool(entry.key, entry.cfg)
+		tool.Parent = backpack
+		firstTool = firstTool or tool
+	end
+	task.delay(0.15, function()
+		if firstTool and firstTool.Parent == backpack and humanoid.Health > 0 then
+			humanoid:EquipTool(firstTool)
+		end
+	end)
+end
+
+return Loadout
 ]=],
 	},
 	{
@@ -463,30 +612,95 @@ for _, pos in {
 	end)
 end
 
--- Team spawns at opposite ends
-local function spawnPad(x, z, teamColor)
+-- Arena entry pads at opposite ends. These are markers, not SpawnLocations:
+-- GameManager teleports players onto them when a match starts.
+local function spawnMarkers(folderName, x, color)
+	local folder = Instance.new("Folder")
+	folder.Name = folderName
+	folder.Parent = map
+	for i = -2, 2 do
+		local pad = newPart({
+			name = "Pad",
+			size = Vector3.new(6, 0.5, 6),
+			position = Vector3.new(x, 1.3, i * 22),
+			color = color,
+			material = Enum.Material.Neon,
+		})
+		pad.Transparency = 0.4
+		pad.Parent = folder
+	end
+end
+spawnMarkers("RedSpawns", -118, Color3.fromRGB(255, 70, 70))
+spawnMarkers("BlueSpawns", 118, Color3.fromRGB(80, 130, 255))
+
+-- Lobby: a walled deck outside the arena where players wait between matches
+local LOBBY_Z = 220
+newPart({
+	name = "LobbyFloor",
+	size = Vector3.new(120, 1, 60),
+	position = Vector3.new(0, 0.5, LOBBY_Z),
+	color = Color3.fromRGB(38, 38, 44),
+	material = Enum.Material.Slate,
+})
+for _, def in {
+	{ Vector3.new(120, 12, 2), Vector3.new(0, 6, LOBBY_Z + 30) },
+	{ Vector3.new(120, 12, 2), Vector3.new(0, 6, LOBBY_Z - 30) },
+	{ Vector3.new(2, 12, 60), Vector3.new(60, 6, LOBBY_Z) },
+	{ Vector3.new(2, 12, 60), Vector3.new(-60, 6, LOBBY_Z) },
+} do
+	newPart({
+		name = "LobbyWall",
+		size = def[1],
+		position = def[2],
+		color = Color3.fromRGB(28, 28, 32),
+		material = Enum.Material.Metal,
+	})
+end
+
+local sign = newPart({
+	name = "LobbySign",
+	size = Vector3.new(50, 10, 1),
+	position = Vector3.new(0, 10, LOBBY_Z + 29),
+	color = Color3.fromRGB(20, 20, 24),
+	material = Enum.Material.SmoothPlastic,
+})
+local signGui = Instance.new("SurfaceGui")
+signGui.Face = Enum.NormalId.Front
+signGui.CanvasSize = Vector2.new(1000, 200)
+signGui.Parent = sign
+local signText = Instance.new("TextLabel")
+signText.Size = UDim2.new(1, 0, 1, 0)
+signText.BackgroundTransparency = 1
+signText.Font = Enum.Font.GothamBold
+signText.TextScaled = true
+signText.TextColor3 = Color3.fromRGB(255, 220, 120)
+signText.Text = "RIVALS ARENA"
+signText.Parent = signGui
+
+-- Neutral lobby spawns — this is where everyone appears between matches
+for _, pos in {
+	Vector3.new(-40, 1.5, LOBBY_Z - 15),
+	Vector3.new(-40, 1.5, LOBBY_Z + 15),
+	Vector3.new(40, 1.5, LOBBY_Z - 15),
+	Vector3.new(40, 1.5, LOBBY_Z + 15),
+	Vector3.new(0, 1.5, LOBBY_Z),
+} do
 	local s = Instance.new("SpawnLocation")
-	s.Size = Vector3.new(6, 1, 6)
-	s.Position = Vector3.new(x, 1.5, z)
+	s.Size = Vector3.new(8, 1, 8)
+	s.Position = pos
 	s.Anchored = true
-	s.Neutral = false
-	s.TeamColor = teamColor
-	s.Duration = 4
-	s.Color = teamColor.Color
-	s.Material = Enum.Material.Neon
-	s.Transparency = 0.4
+	s.Neutral = true
+	s.Duration = 0
+	s.Color = Color3.fromRGB(60, 60, 70)
+	s.Material = Enum.Material.Metal
 	local decal = s:FindFirstChildOfClass("Decal")
 	if decal then
 		decal:Destroy()
 	end
 	s.Parent = map
 end
-for i = -2, 2 do
-	spawnPad(-118, i * 22, BrickColor.new("Bright red"))
-	spawnPad(118, i * 22, BrickColor.new("Bright blue"))
-end
 
--- Remove any pre-existing neutral spawns so players always spawn on team pads
+-- Remove any pre-existing spawns so players always start in our lobby
 for _, child in workspace:GetChildren() do
 	if child:IsA("SpawnLocation") then
 		child:Destroy()
@@ -504,63 +718,17 @@ Lighting.Brightness = 2.5
 		name = "PlayerSetup",
 		class = "Script",
 		source = [=[
--- Spawning: fast base movement, leaderstats, and the weapon loadout.
+-- Spawning: fast base movement and leaderstats. Weapons are handed out by
+-- GameManager when a match starts — fresh spawns land in the lobby unarmed.
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local shared = ReplicatedStorage:WaitForChild("RivalsShared")
-local WeaponConfig = require(shared:WaitForChild("WeaponConfig"))
 
 Players.RespawnTime = 2.5
 
-local sortedWeapons = {}
-for key, cfg in WeaponConfig do
-	table.insert(sortedWeapons, { key = key, cfg = cfg })
-end
-table.sort(sortedWeapons, function(a, b)
-	return a.cfg.slot < b.cfg.slot
-end)
-
-local function buildTool(key, cfg)
-	local tool = Instance.new("Tool")
-	tool.Name = cfg.displayName
-	tool.CanBeDropped = false
-	tool.ToolTip = cfg.displayName
-	tool:SetAttribute("WeaponName", key)
-	tool:SetAttribute("Ammo", cfg.magSize)
-	tool:SetAttribute("Reloading", false)
-
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.5, 0.5, 2.2)
-	handle.Color = Color3.fromRGB(40, 40, 45)
-	handle.Material = Enum.Material.Metal
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-
-	return tool
-end
-
-local function onCharacterAdded(player, character)
+local function onCharacterAdded(character)
 	local humanoid = character:WaitForChild("Humanoid")
 	humanoid.WalkSpeed = 24
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = 55
-
-	local backpack = player:WaitForChild("Backpack")
-	local firstTool
-	for _, entry in sortedWeapons do
-		local tool = buildTool(entry.key, entry.cfg)
-		tool.Parent = backpack
-		firstTool = firstTool or tool
-	end
-
-	task.delay(0.2, function()
-		if firstTool and firstTool.Parent == backpack and humanoid.Health > 0 then
-			humanoid:EquipTool(firstTool)
-		end
-	end)
 end
 
 local function onPlayerAdded(player)
@@ -574,11 +742,9 @@ local function onPlayerAdded(player)
 	deaths.Parent = stats
 	stats.Parent = player
 
-	player.CharacterAdded:Connect(function(character)
-		onCharacterAdded(player, character)
-	end)
+	player.CharacterAdded:Connect(onCharacterAdded)
 	if player.Character then
-		onCharacterAdded(player, player.Character)
+		onCharacterAdded(player.Character)
 	end
 end
 
@@ -855,6 +1021,10 @@ roundState.OnClientEvent:Connect(function(data)
 			banner.Text = string.upper(tostring(data.winner)) .. " WINS"
 			banner.TextColor3 = data.winner == "Red" and RED or BLUE
 		end
+	elseif data.state == "intermission" then
+		banner.Visible = true
+		banner.Text = string.format("MATCH STARTS IN %d", data.timeLeft or 0)
+		banner.TextColor3 = WHITE
 	else
 		banner.Visible = false
 	end

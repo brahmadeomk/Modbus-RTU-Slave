@@ -34,9 +34,14 @@ Re-running the installer is safe; it replaces the previous install.
 
 ## Game rules
 
-- Two auto-balanced teams (Red vs Blue), spawning at opposite ends.
-- First team to **40 kills**, or the higher score when the **5 minute**
-  round timer runs out. 8-second intermission, then everything resets.
+- Everyone spawns unarmed in a **lobby** deck outside the arena; a
+  15-second countdown runs between matches.
+- On match start, players are teleported onto their team's arena pads,
+  armed, and given 3 seconds of spawn protection. Mid-match respawns and
+  late joiners drop straight back into the arena.
+- Two auto-balanced teams (Red vs Blue). First team to **40 kills**, or
+  the higher score when the **5 minute** match timer runs out — then
+  everyone returns to the lobby and the next countdown starts.
 - Kills heal you **+35 HP** (Rivals-style reward for aggression).
 - Green pads launch you into the air; the center platform is high ground.
 
@@ -45,9 +50,10 @@ Re-running the installer is safe; it replaces the previous install.
 ```
 src/
   shared/   WeaponConfig (balance table), Remotes (RemoteEvent access)
-  server/   MapBuilder, PlayerSetup (loadout/movement stats),
-            CombatServer (server-authoritative hit validation),
-            GameManager (teams, scores, killfeed, round loop)
+  server/   MapBuilder (arena + lobby), PlayerSetup (movement stats),
+            Loadout (weapon hand-out), CombatServer (server-authoritative
+            hit validation), GameManager (teams, scores, killfeed,
+            lobby/match state machine)
   client/   WeaponClient (aim lock, crosshair, firing, tracers),
             MovementClient (double jump, dash), HUD (health, ammo,
             scoreboard, killfeed, round banner)

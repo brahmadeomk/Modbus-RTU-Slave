@@ -120,30 +120,95 @@ for _, pos in {
 	end)
 end
 
--- Team spawns at opposite ends
-local function spawnPad(x, z, teamColor)
+-- Arena entry pads at opposite ends. These are markers, not SpawnLocations:
+-- GameManager teleports players onto them when a match starts.
+local function spawnMarkers(folderName, x, color)
+	local folder = Instance.new("Folder")
+	folder.Name = folderName
+	folder.Parent = map
+	for i = -2, 2 do
+		local pad = newPart({
+			name = "Pad",
+			size = Vector3.new(6, 0.5, 6),
+			position = Vector3.new(x, 1.3, i * 22),
+			color = color,
+			material = Enum.Material.Neon,
+		})
+		pad.Transparency = 0.4
+		pad.Parent = folder
+	end
+end
+spawnMarkers("RedSpawns", -118, Color3.fromRGB(255, 70, 70))
+spawnMarkers("BlueSpawns", 118, Color3.fromRGB(80, 130, 255))
+
+-- Lobby: a walled deck outside the arena where players wait between matches
+local LOBBY_Z = 220
+newPart({
+	name = "LobbyFloor",
+	size = Vector3.new(120, 1, 60),
+	position = Vector3.new(0, 0.5, LOBBY_Z),
+	color = Color3.fromRGB(38, 38, 44),
+	material = Enum.Material.Slate,
+})
+for _, def in {
+	{ Vector3.new(120, 12, 2), Vector3.new(0, 6, LOBBY_Z + 30) },
+	{ Vector3.new(120, 12, 2), Vector3.new(0, 6, LOBBY_Z - 30) },
+	{ Vector3.new(2, 12, 60), Vector3.new(60, 6, LOBBY_Z) },
+	{ Vector3.new(2, 12, 60), Vector3.new(-60, 6, LOBBY_Z) },
+} do
+	newPart({
+		name = "LobbyWall",
+		size = def[1],
+		position = def[2],
+		color = Color3.fromRGB(28, 28, 32),
+		material = Enum.Material.Metal,
+	})
+end
+
+local sign = newPart({
+	name = "LobbySign",
+	size = Vector3.new(50, 10, 1),
+	position = Vector3.new(0, 10, LOBBY_Z + 29),
+	color = Color3.fromRGB(20, 20, 24),
+	material = Enum.Material.SmoothPlastic,
+})
+local signGui = Instance.new("SurfaceGui")
+signGui.Face = Enum.NormalId.Front
+signGui.CanvasSize = Vector2.new(1000, 200)
+signGui.Parent = sign
+local signText = Instance.new("TextLabel")
+signText.Size = UDim2.new(1, 0, 1, 0)
+signText.BackgroundTransparency = 1
+signText.Font = Enum.Font.GothamBold
+signText.TextScaled = true
+signText.TextColor3 = Color3.fromRGB(255, 220, 120)
+signText.Text = "RIVALS ARENA"
+signText.Parent = signGui
+
+-- Neutral lobby spawns — this is where everyone appears between matches
+for _, pos in {
+	Vector3.new(-40, 1.5, LOBBY_Z - 15),
+	Vector3.new(-40, 1.5, LOBBY_Z + 15),
+	Vector3.new(40, 1.5, LOBBY_Z - 15),
+	Vector3.new(40, 1.5, LOBBY_Z + 15),
+	Vector3.new(0, 1.5, LOBBY_Z),
+} do
 	local s = Instance.new("SpawnLocation")
-	s.Size = Vector3.new(6, 1, 6)
-	s.Position = Vector3.new(x, 1.5, z)
+	s.Size = Vector3.new(8, 1, 8)
+	s.Position = pos
 	s.Anchored = true
-	s.Neutral = false
-	s.TeamColor = teamColor
-	s.Duration = 4
-	s.Color = teamColor.Color
-	s.Material = Enum.Material.Neon
-	s.Transparency = 0.4
+	s.Neutral = true
+	s.Duration = 0
+	s.Color = Color3.fromRGB(60, 60, 70)
+	s.Material = Enum.Material.Metal
 	local decal = s:FindFirstChildOfClass("Decal")
 	if decal then
 		decal:Destroy()
 	end
 	s.Parent = map
 end
-for i = -2, 2 do
-	spawnPad(-118, i * 22, BrickColor.new("Bright red"))
-	spawnPad(118, i * 22, BrickColor.new("Bright blue"))
-end
 
--- Remove any pre-existing neutral spawns so players always spawn on team pads
+-- Remove any pre-existing spawns so players always start in our lobby
 for _, child in workspace:GetChildren() do
 	if child:IsA("SpawnLocation") then
 		child:Destroy()
