@@ -1,0 +1,43 @@
+-- Weapon balance for the Rivals-style shooter. All damage numbers assume 100 HP.
+-- fireRate is shots per second, spread is in degrees, range in studs.
+return {
+	AssaultRifle = {
+		displayName = "AK-77",
+		slot = 1,
+		damage = 21,
+		headshot = 1.6,
+		fireRate = 8.5,
+		magSize = 30,
+		reloadTime = 1.7,
+		spread = 1.1,
+		range = 500,
+		pellets = 1,
+		auto = true,
+	},
+	Shotgun = {
+		displayName = "Riot Shotgun",
+		slot = 2,
+		damage = 11,
+		headshot = 1.4,
+		fireRate = 1.8,
+		magSize = 6,
+		reloadTime = 2.2,
+		spread = 5.5,
+		range = 150,
+		pellets = 8,
+		auto = false,
+	},
+	Sniper = {
+		displayName = "DMR-9",
+		slot = 3,
+		damage = 85,
+		headshot = 2.0,
+		fireRate = 1.1,
+		magSize = 4,
+		reloadTime = 2.4,
+		spread = 0.05,
+		range = 1200,
+		pellets = 1,
+		auto = false,
+	},
+}

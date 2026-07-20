@@ -1,0 +1,27 @@
+{
+  "name": "RivalsShooter",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "RivalsShooter": {
+        "$path": "src/server"
+      }
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "RivalsShared": {
+        "$path": "src/shared"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "RivalsClient": {
+          "$path": "src/client"
+        }
+      }
+    }
+  }
+}
